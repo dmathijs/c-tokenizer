@@ -7,6 +7,7 @@
 Tokenizer which uses UTF-8
 author: Diederik Mathijs
 Based on video by Andrej Karpathy
+run with: gcc tokenizer.c -o tokenizer && ./tokenizer < input.txt
 */
 
 // Arbitrary max length for our input buffer
@@ -155,13 +156,8 @@ unsigned *compressVocabulary(unsigned *text)
     union VocabularyCharacterUnion character;
     character.pair = pair;
     vocabulary[256 + i] = (VocabularyItem){is_pair : 1, vocabularyCharacter : character};
-    printf("Merging: (%u, %u, %d, %d)\n", max->first, max->second, max->occurrences, 256 + i);
+    printf("Merging %d occurrences of: %d (%u, %u)\n", max->occurrences, 256 + i, max->first, max->second);
     text = mergeTokenPairInText(text, max, 256 + i);
-  }
-
-  while (*text++ != '\0')
-  {
-    printf("%d, ", *text);
   }
 }
 
