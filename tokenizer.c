@@ -63,33 +63,38 @@ TokenPair *getOrderedTokenBytePairs(unsigned *s)
   TokenPair *tokenPairs = malloc(sizeof(TokenPair) * INTERMEDIATE_TOKENS_LIST_MAX_SIZE); // arbitrary number of pairs
   TokenPair *tokenPairsPtr = tokenPairs;
 
-  int i = 0;
   unsigned *stringPtr = s;
 
-  for (; *stringPtr != '\0'; stringPtr++)
+  while (*stringPtr != '\0')
   {
-    unsigned char1 = *(stringPtr++);
-    unsigned char2 = *stringPtr;
-    // return 1 char after fetching pair
-    stringPtr--;
+    unsigned char1 = *stringPtr;
 
-    short found = 0;
+    if (*stringPtr++ == '\0')
+      break;
+
+    unsigned char2 = *stringPtr;
+
+    int found = 0;
     for (int j = 0; j < tokenPairsPtr - tokenPairs; j++)
     {
       if (tokenPairs[j].first == char1 && tokenPairs[j].second == char2)
       {
-        tokenPairs[j].occurrences++;
+        tokenPairs[j].occurrences += 1;
         found = 1;
         break;
       }
     }
 
-    if (found == 0)
+    if (!found)
     {
-      *tokenPairsPtr++ = (TokenPair){char1, char2, 1};
+      tokenPairsPtr->first = char1;
+      tokenPairsPtr->second = char2;
+      tokenPairsPtr->occurrences = 1;
+
+      tokenPairsPtr++;
     }
 
-    for (int i = tokenPairsPtr - tokenPairs; i >= 0; i--)
+    for (int i = tokenPairsPtr - tokenPairs - 1; i >= 1; i--)
     {
       if (tokenPairs[i - 1].occurrences < tokenPairs[i].occurrences)
       {
@@ -100,8 +105,6 @@ TokenPair *getOrderedTokenBytePairs(unsigned *s)
     }
   }
 
-  *tokenPairsPtr = (TokenPair){-1, -1, -1};
-
   return tokenPairs;
 }
 
@@ -111,21 +114,25 @@ unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned id
   unsigned *newString = malloc(sizeof(unsigned) * MAX_LENGTH);
   unsigned *newStringPtr = newString;
 
-  for (; *stringPtr != '\0'; stringPtr++)
+  while (*stringPtr != '\0')
   {
-    unsigned char1 = *(stringPtr++);
+    unsigned char1 = *stringPtr;
+    stringPtr++;
     unsigned char2 = *stringPtr;
-    stringPtr--;
 
     if (char1 == tokenPair->first && char2 == tokenPair->second)
     {
-      *newStringPtr++ = idx;
-      stringPtr++;
+      *newStringPtr = idx;
+      newStringPtr++;
     }
     else
     {
-      *newStringPtr++ = *stringPtr;
+      stringPtr--;
+      *newStringPtr = *stringPtr;
+      newStringPtr++;
     }
+
+    stringPtr++;
   }
 
   *newStringPtr = '\0';
@@ -143,21 +150,27 @@ unsigned *compressVocabulary(unsigned *text)
   // 256 characters are reserved for the first 256 ASCII characters
   unsigned merges = VOCABULARY_SIZE - 256;
 
-  VocabularyItem *vocabulary = getVocabularyFromText(text);
+  unsigned *txtPtr = text;
 
-  TokenPair *tokenPairs = getOrderedTokenBytePairs(text);
-
-  printf("First TokenPair: (%u, %u, %d)\n", tokenPairs[0].first, tokenPairs[0].second, tokenPairs[0].occurrences);
+  VocabularyItem *vocabulary = getVocabularyFromText(txtPtr);
 
   for (int i = 0; i < merges; i++)
   {
-    TokenPair *max = &tokenPairs[i];
+    TokenPair *tokenPairs = getOrderedTokenBytePairs(txtPtr);
+
+    TokenPair *pairsPtr = tokenPairs;
+
+    TokenPair *max = &tokenPairs[0];
+
     VocabularyPair pair = (VocabularyPair){first : max->first, second : max->second};
     union VocabularyCharacterUnion character;
     character.pair = pair;
     vocabulary[256 + i] = (VocabularyItem){is_pair : 1, vocabularyCharacter : character};
     printf("Merging %d occurrences of: %d (%u, %u)\n", max->occurrences, 256 + i, max->first, max->second);
-    text = mergeTokenPairInText(text, max, 256 + i);
+
+    txtPtr = mergeTokenPairInText(txtPtr, max, 256 + i);
+
+    free(tokenPairs);
   }
 }
 
@@ -167,6 +180,6 @@ unsigned *readTextFile()
   int index = 0;
   while ((buffer[index++] = getchar()) != EOF)
     ;
-  buffer[index] = '\0';
+  buffer[index - 1] = '\0';
   return buffer;
 }
