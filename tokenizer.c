@@ -1,21 +1,13 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <regex.h>
-#include "structs.h"
+#include "tokenizer.h"
 
 /*
 Tokenizer which uses UTF-8
 author: Diederik Mathijs
 Based on video by Andrej Karpathy
-run with: gcc tokenizer.c -o tokenizer && ./tokenizer < input.txt
+run with: gcc tokenizer.c decoder.c encoder.c -o tokenizer && ./tokenizer < input.txt
 */
 
-// Arbitrary max length for our input buffer
-#define MAX_LENGTH 1048576
 #define INTERMEDIATE_TOKENS_LIST_MAX_SIZE 4096u
-
-#define VOCABULARY_SIZE 277
 
 unsigned *readTextFile();
 
@@ -24,8 +16,8 @@ VocabularyItem *buildVocabulary(unsigned *text);
 unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned idx);
 unsigned getCharStringLength(unsigned *string);
 
-unsigned *encode(char *string, VocabularyItem *vocabulary);
-char *decode(unsigned *string, VocabularyItem *vocabulary);
+extern unsigned *encode(char *string, VocabularyItem *vocabulary);
+extern char *decode(unsigned *string, VocabularyItem *vocabulary);
 
 extern TokenPair *getOrderedTokenBytePairs(unsigned *s);
 
@@ -196,91 +188,4 @@ unsigned *readTextFile()
     ;
   buffer[index - 1] = '\0';
   return buffer;
-}
-
-unsigned *encode(char *string, VocabularyItem *vocabulary)
-{
-  printf("Length before encoding: %lu\n", strlen(string));
-  char *stringPtr = string;
-
-  unsigned *newString = malloc(sizeof(unsigned) * MAX_LENGTH);
-  unsigned *newStringPtr = newString;
-  // Ptr that should point to first pair in vocabulary
-  VocabularyItem *mergePtr = vocabulary;
-
-  while (!mergePtr->is_pair)
-  {
-    mergePtr++;
-  }
-
-  while (*stringPtr != '\0')
-  {
-    unsigned char1 = *stringPtr;
-    stringPtr++;
-    unsigned char2 = *stringPtr;
-
-    // iterate merges
-    int found = 0;
-    VocabularyItem *mergePtrCpy = mergePtr;
-    for (int i = 0; i < VOCABULARY_SIZE - 256; i++)
-    {
-      if (mergePtrCpy->vocabularyCharacter.pair.first == char1 && mergePtrCpy->vocabularyCharacter.pair.second == char2)
-      {
-        found = 1;
-
-        *newStringPtr = i + 256;
-        newStringPtr++;
-        stringPtr++;
-
-        break;
-      }
-
-      mergePtrCpy++;
-    }
-
-    if (!found)
-    {
-      *newStringPtr = char1;
-      newStringPtr++;
-    }
-  }
-
-  *newStringPtr = '\0';
-
-  printf("Length after encoding: %d\n", getCharStringLength(newString));
-
-  return newString;
-}
-
-char *decode(unsigned *string, VocabularyItem *vocabulary)
-{
-  unsigned *stringPtr = string;
-  char *newString = malloc(sizeof(char) * MAX_LENGTH);
-  char *newStringPtr = newString;
-
-  while (*stringPtr != '\0')
-  {
-    unsigned idx = *stringPtr;
-
-    if (idx < 256)
-    {
-      *newStringPtr = idx;
-      newStringPtr++;
-    }
-    else
-    {
-      VocabularyItem *vocabularyPtr = &vocabulary[idx];
-      VocabularyPair pair = vocabularyPtr->vocabularyCharacter.pair;
-      *newStringPtr = pair.first;
-      newStringPtr++;
-      *newStringPtr = pair.second;
-      newStringPtr++;
-    }
-
-    stringPtr++;
-  }
-
-  *newStringPtr = '\0';
-
-  return newString;
 }
