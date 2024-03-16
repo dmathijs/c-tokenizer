@@ -9,11 +9,14 @@ run with: gcc tokenizer.c decoder.c encoder.c -o tokenizer && ./tokenizer < inpu
 
 #define INTERMEDIATE_TOKENS_LIST_MAX_SIZE 4096u
 
+// Unlike in GPT2, there's no collapsing of spaces, this is because negative lookahead is not included in POSIX regex
+char *GPT_2_PATTERN_SPLITTER = "'s|'t|'re|'ve|'m|'ll|'d| ?[[:alpha:]]+| ?[[:digit:]]+| ?[^[:space:][:alpha:][:digit:]]+|[:space:]+";
+
 unsigned *readTextFile();
 
 extern VocabularyItem *getBaseVocabulary(unsigned *s);
 VocabularyItem *buildVocabulary(unsigned *text);
-unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned idx);
+unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned idx, int freeTxtPtr);
 unsigned getCharStringLength(unsigned *string);
 
 extern unsigned *encode(char *string, VocabularyItem *vocabulary);
@@ -27,7 +30,69 @@ int main()
 
   VocabularyItem *vocabulary = buildVocabulary(s);
 
-  printf("%s\n", decode(encode("Can I be sure that this actually works as intended?", vocabulary), vocabulary));
+  // printf("%s\n", decode(encode("Can I be sure that this actually works as intended?", vocabulary), vocabulary));
+
+  regex_t regex;
+  int status = regcomp(&regex, GPT_2_PATTERN_SPLITTER, REG_EXTENDED);
+  if (status != 0)
+  {
+    char error_message[100];
+    regerror(status, &regex, error_message, sizeof(error_message));
+    fprintf(stderr, "Regex compilation failed: %s\n", error_message);
+    exit(EXIT_FAILURE);
+  }
+
+  // Calculate the length of the unsigned array
+  unsigned *sPtr = s;
+  // Allocate memory for the character array
+  char *charArray = malloc(MAX_LENGTH * sizeof(char));
+  char *charPtr = charArray;
+  // Copy unsigned integers to characters, discarding overflows
+  while (*sPtr != '\0')
+  {
+    // Check if the unsigned integer fits within the range of a char
+    if (*sPtr <= UCHAR_MAX)
+    {
+      *charPtr++ = (char)*sPtr;
+    }
+    else
+    {
+      // Handle overflow by setting to a default value
+      *charPtr++ = '?'; // For example, you can use '?' character
+    }
+
+    sPtr++;
+  }
+
+  charPtr = '\0';
+
+  // Execute the regex split
+  char *token;
+  char *str = strdup(charArray); // Duplicate the string because regexec modifies it
+  if (str == NULL)
+  {
+    fprintf(stderr, "Memory allocation failed\n");
+    exit(EXIT_FAILURE);
+  }
+
+  while ((token = strsep(&str, " \t\n")) != NULL)
+  {
+    regmatch_t pmatch;
+    if (regexec(&regex, token, 1, &pmatch, 0) == 0)
+    {
+      // If token matches the regex pattern, print it
+      printf("%.*s, ", (int)(pmatch.rm_eo - pmatch.rm_so), token + pmatch.rm_so);
+    }
+    else
+    {
+      // If token does not match the regex pattern, print it as is
+      // printf("%s\n", token);
+    }
+  }
+
+  // Free the memory and compiled regex
+  free(str);
+  regfree(&regex);
 }
 
 extern VocabularyItem *getBaseVocabulary(unsigned *s)
@@ -93,7 +158,7 @@ TokenPair *getOrderedTokenBytePairs(unsigned *s)
   return tokenPairs;
 }
 
-unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned idx)
+unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned idx, int freeTextPtr)
 {
   unsigned *stringPtr = text;
   unsigned *newString = malloc(sizeof(unsigned) * MAX_LENGTH);
@@ -122,8 +187,10 @@ unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned id
 
   *newStringPtr = '\0';
 
-  // old text can be discarded..
-  free(text);
+  if (freeTextPtr)
+  {
+    free(text);
+  }
 
   return newString;
 }
@@ -156,7 +223,8 @@ VocabularyItem *buildVocabulary(unsigned *text)
     vocabulary[idx] = (VocabularyItem){is_pair : 1, vocabularyCharacter : character};
     printf("Merging %d occurrences of: %d (%u, %u)\n", max->occurrences, idx, max->first, max->second);
 
-    txtPtr = mergeTokenPairInText(txtPtr, max, idx);
+    // Don't free the original text
+    txtPtr = mergeTokenPairInText(txtPtr, max, idx, i > 1);
 
     free(tokenPairs);
   }
