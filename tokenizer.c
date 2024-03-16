@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 #include "structs.h"
 
 /*
@@ -14,13 +15,17 @@ run with: gcc tokenizer.c -o tokenizer && ./tokenizer < input.txt
 #define MAX_LENGTH 1048576
 #define INTERMEDIATE_TOKENS_LIST_MAX_SIZE 4096u
 
-#define VOCABULARY_SIZE 276
+#define VOCABULARY_SIZE 277
 
 unsigned *readTextFile();
 
-extern VocabularyItem *getVocabularyFromText(unsigned *s);
-unsigned *compressVocabulary(unsigned *text);
+extern VocabularyItem *getBaseVocabulary(unsigned *s);
+VocabularyItem *buildVocabulary(unsigned *text);
 unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned idx);
+unsigned getCharStringLength(unsigned *string);
+
+unsigned *encode(char *string, VocabularyItem *vocabulary);
+char *decode(unsigned *string, VocabularyItem *vocabulary);
 
 extern TokenPair *getOrderedTokenBytePairs(unsigned *s);
 
@@ -28,31 +33,19 @@ int main()
 {
   unsigned *s = readTextFile();
 
-  unsigned *tokensIncludingBytePairs = compressVocabulary(s);
+  VocabularyItem *vocabulary = buildVocabulary(s);
+
+  printf("%s\n", decode(encode("Can I be sure that this actually works as intended?", vocabulary), vocabulary));
 }
 
-extern VocabularyItem *getVocabularyFromText(unsigned *s)
+extern VocabularyItem *getBaseVocabulary(unsigned *s)
 {
   VocabularyItem *vocabulary = malloc(sizeof(VocabularyItem) * VOCABULARY_SIZE); // arbitrary number of tokens
   VocabularyItem *vocabularyPtr = vocabulary;
 
-  for (unsigned *stringPtr = s; *stringPtr != '\0'; stringPtr++)
+  for (int i = 0; i < 256; i++)
   {
-    unsigned token = *stringPtr;
-    short found = 0;
-    for (int i = 0; i < VOCABULARY_SIZE; i++)
-    {
-      if (vocabulary[i].vocabularyCharacter.character == token)
-      {
-        found = 1;
-        break;
-      }
-    }
-
-    if (found == 0)
-    {
-      *vocabularyPtr++ = (VocabularyItem){is_pair : 0, vocabularyCharacter : token};
-    }
+    *vocabularyPtr++ = (VocabularyItem){is_pair : 0, vocabularyCharacter : i};
   }
 
   return vocabulary;
@@ -143,7 +136,7 @@ unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned id
   return newString;
 }
 
-unsigned *compressVocabulary(unsigned *text)
+VocabularyItem *buildVocabulary(unsigned *text)
 {
   // Vocabulary size can be higher because of UTF-8 encoding
   // thus we need to compress the vocabulary to it's target size
@@ -152,7 +145,9 @@ unsigned *compressVocabulary(unsigned *text)
 
   unsigned *txtPtr = text;
 
-  VocabularyItem *vocabulary = getVocabularyFromText(txtPtr);
+  VocabularyItem *vocabulary = getBaseVocabulary(txtPtr);
+
+  unsigned originalLength = getCharStringLength(txtPtr);
 
   for (int i = 0; i < merges; i++)
   {
@@ -165,13 +160,32 @@ unsigned *compressVocabulary(unsigned *text)
     VocabularyPair pair = (VocabularyPair){first : max->first, second : max->second};
     union VocabularyCharacterUnion character;
     character.pair = pair;
-    vocabulary[256 + i] = (VocabularyItem){is_pair : 1, vocabularyCharacter : character};
-    printf("Merging %d occurrences of: %d (%u, %u)\n", max->occurrences, 256 + i, max->first, max->second);
+    unsigned idx = 256 + i;
+    vocabulary[idx] = (VocabularyItem){is_pair : 1, vocabularyCharacter : character};
+    printf("Merging %d occurrences of: %d (%u, %u)\n", max->occurrences, idx, max->first, max->second);
 
-    txtPtr = mergeTokenPairInText(txtPtr, max, 256 + i);
+    txtPtr = mergeTokenPairInText(txtPtr, max, idx);
 
     free(tokenPairs);
   }
+
+  unsigned compressedLength = getCharStringLength(txtPtr);
+
+  printf("compression ratio: %0.2fX\n", (float)originalLength / (float)compressedLength);
+
+  return vocabulary;
+}
+
+unsigned getCharStringLength(unsigned *string)
+{
+  unsigned *stringPtr = string;
+  unsigned length = 0;
+  while (*stringPtr != '\0')
+  {
+    length++;
+    stringPtr++;
+  }
+  return length;
 }
 
 unsigned *readTextFile()
@@ -182,4 +196,91 @@ unsigned *readTextFile()
     ;
   buffer[index - 1] = '\0';
   return buffer;
+}
+
+unsigned *encode(char *string, VocabularyItem *vocabulary)
+{
+  printf("Length before encoding: %lu\n", strlen(string));
+  char *stringPtr = string;
+
+  unsigned *newString = malloc(sizeof(unsigned) * MAX_LENGTH);
+  unsigned *newStringPtr = newString;
+  // Ptr that should point to first pair in vocabulary
+  VocabularyItem *mergePtr = vocabulary;
+
+  while (!mergePtr->is_pair)
+  {
+    mergePtr++;
+  }
+
+  while (*stringPtr != '\0')
+  {
+    unsigned char1 = *stringPtr;
+    stringPtr++;
+    unsigned char2 = *stringPtr;
+
+    // iterate merges
+    int found = 0;
+    VocabularyItem *mergePtrCpy = mergePtr;
+    for (int i = 0; i < VOCABULARY_SIZE - 256; i++)
+    {
+      if (mergePtrCpy->vocabularyCharacter.pair.first == char1 && mergePtrCpy->vocabularyCharacter.pair.second == char2)
+      {
+        found = 1;
+
+        *newStringPtr = i + 256;
+        newStringPtr++;
+        stringPtr++;
+
+        break;
+      }
+
+      mergePtrCpy++;
+    }
+
+    if (!found)
+    {
+      *newStringPtr = char1;
+      newStringPtr++;
+    }
+  }
+
+  *newStringPtr = '\0';
+
+  printf("Length after encoding: %d\n", getCharStringLength(newString));
+
+  return newString;
+}
+
+char *decode(unsigned *string, VocabularyItem *vocabulary)
+{
+  unsigned *stringPtr = string;
+  char *newString = malloc(sizeof(char) * MAX_LENGTH);
+  char *newStringPtr = newString;
+
+  while (*stringPtr != '\0')
+  {
+    unsigned idx = *stringPtr;
+
+    if (idx < 256)
+    {
+      *newStringPtr = idx;
+      newStringPtr++;
+    }
+    else
+    {
+      VocabularyItem *vocabularyPtr = &vocabulary[idx];
+      VocabularyPair pair = vocabularyPtr->vocabularyCharacter.pair;
+      *newStringPtr = pair.first;
+      newStringPtr++;
+      *newStringPtr = pair.second;
+      newStringPtr++;
+    }
+
+    stringPtr++;
+  }
+
+  *newStringPtr = '\0';
+
+  return newString;
 }
