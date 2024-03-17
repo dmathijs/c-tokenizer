@@ -102,7 +102,9 @@ extern VocabularyItem *getBaseVocabulary(unsigned *s)
 
   for (int i = 0; i < 256; i++)
   {
-    *vocabularyPtr++ = (VocabularyItem){is_pair : 0, vocabularyCharacter : i};
+    vocabularyPtr->is_pair = 0;
+    vocabularyPtr->vocabularyCharacter.character = i;
+    vocabularyPtr++;
   }
 
   return vocabulary;
@@ -115,7 +117,7 @@ TokenPair *getOrderedTokenBytePairs(unsigned *s)
 
   unsigned *stringPtr = s;
 
-  while (*stringPtr != '\0')
+  while (*stringPtr != '\0' && tokenPairsPtr - tokenPairs < INTERMEDIATE_TOKENS_LIST_MAX_SIZE)
   {
     unsigned char1 = *stringPtr;
 
@@ -164,6 +166,8 @@ unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned id
   unsigned *newString = malloc(sizeof(unsigned) * MAX_LENGTH);
   unsigned *newStringPtr = newString;
 
+  int count = 0;
+
   while (*stringPtr != '\0')
   {
     unsigned char1 = *stringPtr;
@@ -183,6 +187,7 @@ unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned id
     }
 
     stringPtr++;
+    count++;
   }
 
   *newStringPtr = '\0';
@@ -216,11 +221,13 @@ VocabularyItem *buildVocabulary(unsigned *text)
 
     TokenPair *max = &tokenPairs[0];
 
-    VocabularyPair pair = (VocabularyPair){first : max->first, second : max->second};
-    union VocabularyCharacterUnion character;
-    character.pair = pair;
     unsigned idx = 256 + i;
-    vocabulary[idx] = (VocabularyItem){is_pair : 1, vocabularyCharacter : character};
+
+    VocabularyItem *item = &vocabulary[idx];
+    item->is_pair = 1;
+    item->vocabularyCharacter.pair.first = max->first;
+    item->vocabularyCharacter.pair.second = max->second;
+
     printf("Merging %d occurrences of: %d (%u, %u)\n", max->occurrences, idx, max->first, max->second);
 
     // Don't free the original text
