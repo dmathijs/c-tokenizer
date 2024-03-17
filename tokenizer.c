@@ -16,7 +16,11 @@ unsigned *readTextFile();
 
 extern VocabularyItem *getBaseVocabulary(unsigned *s);
 VocabularyItem *buildVocabulary(unsigned *text);
+void printVocabulary(VocabularyItem *vocabulary);
+
+int compareTokenPairs(const void *a, const void *b);
 unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned idx, int freeTxtPtr);
+
 unsigned getCharStringLength(unsigned *string);
 
 extern unsigned *encode(char *string, VocabularyItem *vocabulary);
@@ -30,69 +34,103 @@ int main()
 
   VocabularyItem *vocabulary = buildVocabulary(s);
 
-  // printf("%s\n", decode(encode("Can I be sure that this actually works as intended?", vocabulary), vocabulary));
+  printf("%s\n", decode(encode("Can I be sure that this actually works as intended?", vocabulary), vocabulary));
 
-  regex_t regex;
-  int status = regcomp(&regex, GPT_2_PATTERN_SPLITTER, REG_EXTENDED);
-  if (status != 0)
-  {
-    char error_message[100];
-    regerror(status, &regex, error_message, sizeof(error_message));
-    fprintf(stderr, "Regex compilation failed: %s\n", error_message);
-    exit(EXIT_FAILURE);
-  }
+  // regex_t regex;
+  // int status = regcomp(&regex, GPT_2_PATTERN_SPLITTER, REG_EXTENDED);
+  // if (status != 0)
+  // {
+  //   char error_message[100];
+  //   regerror(status, &regex, error_message, sizeof(error_message));
+  //   fprintf(stderr, "Regex compilation failed: %s\n", error_message);
+  //   exit(EXIT_FAILURE);
+  // }
 
-  // Calculate the length of the unsigned array
-  unsigned *sPtr = s;
-  // Allocate memory for the character array
-  char *charArray = malloc(MAX_LENGTH * sizeof(char));
-  char *charPtr = charArray;
-  // Copy unsigned integers to characters, discarding overflows
-  while (*sPtr != '\0')
+  // // Calculate the length of the unsigned array
+  // unsigned *sPtr = s;
+  // // Allocate memory for the character array
+  // char *charArray = malloc(MAX_LENGTH * sizeof(char));
+  // char *charPtr = charArray;
+  // // Copy unsigned integers to characters, discarding overflows
+  // while (*sPtr != '\0')
+  // {
+  //   // Check if the unsigned integer fits within the range of a char
+  //   if (*sPtr <= UCHAR_MAX)
+  //   {
+  //     *charPtr++ = (char)*sPtr;
+  //   }
+  //   else
+  //   {
+  //     // Handle overflow by setting to a default value
+  //     *charPtr++ = '?'; // For example, you can use '?' character
+  //   }
+
+  //   sPtr++;
+  // }
+
+  // charPtr = '\0';
+
+  // // Execute the regex split
+  // char *token;
+  // char *str = strdup(charArray); // Duplicate the string because regexec modifies it
+  // if (str == NULL)
+  // {
+  //   fprintf(stderr, "Memory allocation failed\n");
+  //   exit(EXIT_FAILURE);
+  // }
+
+  // while ((token = strsep(&str, " \t\n")) != NULL)
+  // {
+  //   regmatch_t pmatch;
+  //   if (regexec(&regex, token, 1, &pmatch, 0) == 0)
+  //   {
+  //     // If token matches the regex pattern, print it
+  //     printf("%.*s, ", (int)(pmatch.rm_eo - pmatch.rm_so), token + pmatch.rm_so);
+  //   }
+  //   else
+  //   {
+  //     // If token does not match the regex pattern, print it as is
+  //     // printf("%s\n", token);
+  //   }
+  // }
+
+  // // Free the memory and compiled regex
+  // free(str);
+  // regfree(&regex);
+}
+
+void printVocabulary(VocabularyItem *vocabulary)
+{
+  VocabularyItem *vocabularyPtr = vocabulary;
+
+  for (int i = 0; i < VOCABULARY_SIZE; i++)
   {
-    // Check if the unsigned integer fits within the range of a char
-    if (*sPtr <= UCHAR_MAX)
+    unsigned *concatenatedArray = malloc(sizeof(unsigned) * 100);
+    unsigned *concatenatedArrayPtr = concatenatedArray;
+
+    if (vocabularyPtr->is_pair)
     {
-      *charPtr++ = (char)*sPtr;
+      *concatenatedArrayPtr = vocabularyPtr->vocabularyCharacter.pair.first;
+      concatenatedArrayPtr++;
+      *concatenatedArrayPtr = vocabularyPtr->vocabularyCharacter.pair.second;
+      concatenatedArrayPtr++;
     }
     else
     {
-      // Handle overflow by setting to a default value
-      *charPtr++ = '?'; // For example, you can use '?' character
+      *concatenatedArrayPtr = vocabularyPtr->vocabularyCharacter.character;
+      concatenatedArrayPtr++;
     }
 
-    sPtr++;
+    vocabularyPtr++;
+    *concatenatedArrayPtr = '\0';
+
+    char *result = decode(concatenatedArray, vocabulary);
+
+    printf("Vocabulary item %d: [%s]\n", i, result);
+
+    free(result);
+    free(concatenatedArray);
   }
-
-  charPtr = '\0';
-
-  // Execute the regex split
-  char *token;
-  char *str = strdup(charArray); // Duplicate the string because regexec modifies it
-  if (str == NULL)
-  {
-    fprintf(stderr, "Memory allocation failed\n");
-    exit(EXIT_FAILURE);
-  }
-
-  while ((token = strsep(&str, " \t\n")) != NULL)
-  {
-    regmatch_t pmatch;
-    if (regexec(&regex, token, 1, &pmatch, 0) == 0)
-    {
-      // If token matches the regex pattern, print it
-      printf("%.*s, ", (int)(pmatch.rm_eo - pmatch.rm_so), token + pmatch.rm_so);
-    }
-    else
-    {
-      // If token does not match the regex pattern, print it as is
-      // printf("%s\n", token);
-    }
-  }
-
-  // Free the memory and compiled regex
-  free(str);
-  regfree(&regex);
 }
 
 extern VocabularyItem *getBaseVocabulary(unsigned *s)
@@ -108,6 +146,11 @@ extern VocabularyItem *getBaseVocabulary(unsigned *s)
   }
 
   return vocabulary;
+}
+
+int compareTokenPairs(const void *a, const void *b)
+{
+  return (((TokenPair *)b)->occurrences - ((TokenPair *)a)->occurrences);
 }
 
 TokenPair *getOrderedTokenBytePairs(unsigned *s)
@@ -145,17 +188,10 @@ TokenPair *getOrderedTokenBytePairs(unsigned *s)
 
       tokenPairsPtr++;
     }
-
-    for (int i = tokenPairsPtr - tokenPairs - 1; i >= 1; i--)
-    {
-      if (tokenPairs[i - 1].occurrences < tokenPairs[i].occurrences)
-      {
-        TokenPair temp = tokenPairs[i - 1];
-        tokenPairs[i - 1] = tokenPairs[i];
-        tokenPairs[i] = temp;
-      }
-    }
   }
+
+  // t(qsort) < t(bubblesort). .3s difference for size 500 vocabulary.
+  qsort(tokenPairs, tokenPairsPtr - tokenPairs, sizeof(TokenPair), compareTokenPairs);
 
   return tokenPairs;
 }

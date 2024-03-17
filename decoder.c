@@ -14,8 +14,14 @@ char *decode(unsigned *string, VocabularyItem *vocabulary)
 
 		if (idx < 256)
 		{
-			*newStringPtr = idx;
-			newStringPtr++;
+			// Small exclusion of special characters which are part of the text
+			// I do this because they're anoying to print. e.g. 27 will end the program
+			// without first converting to an escape sequence (feel free to add if you read this).
+			if (idx > 31)
+			{
+				*newStringPtr = idx;
+				newStringPtr++;
+			}
 		}
 		else
 		{

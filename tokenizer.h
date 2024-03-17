@@ -7,7 +7,7 @@
 // Arbitrary max length for text in input
 #define MAX_LENGTH 1048576
 // Size of our target vocabulary
-#define VOCABULARY_SIZE 500
+#define VOCABULARY_SIZE 350
 
 typedef struct
 {
