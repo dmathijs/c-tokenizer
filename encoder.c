@@ -6,7 +6,7 @@ extern unsigned getCharStringLength(unsigned *string);
 
 unsigned *encode(char *string, VocabularyItem *vocabulary)
 {
-	printf("Length before encoding: %lu\n", strlen(string));
+	// printf("Length before encoding: %lu\n", strlen(string));
 	char *stringPtr = string;
 
 	unsigned *newString = malloc(sizeof(unsigned) * MAX_LENGTH);
@@ -21,6 +21,7 @@ unsigned *encode(char *string, VocabularyItem *vocabulary)
 
 	while (*stringPtr != '\0')
 	{
+		printf("String: %d\n", *stringPtr);
 		unsigned char1 = *stringPtr;
 		stringPtr++;
 		unsigned char2 = *stringPtr;
@@ -53,7 +54,7 @@ unsigned *encode(char *string, VocabularyItem *vocabulary)
 
 	*newStringPtr = '\0';
 
-	printf("Length after encoding: %d\n", getCharStringLength(newString));
+	// printf("Length after encoding: %d\n", getCharStringLength(newString));
 
 	return newString;
 }

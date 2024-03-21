@@ -14,12 +14,15 @@ char *GPT_2_PATTERN_SPLITTER = "'s|'t|'re|'ve|'m|'ll|'d| ?[[:alpha:]]+| ?[[:digi
 
 unsigned *readTextFile();
 
-extern VocabularyItem *getBaseVocabulary(unsigned *s);
+VocabularyItem *getBaseVocabulary(unsigned *s);
 VocabularyItem *buildVocabulary(unsigned *text);
 void printVocabulary(VocabularyItem *vocabulary);
 
 int compareTokenPairs(const void *a, const void *b);
 unsigned *mergeTokenPairInText(unsigned *text, TokenPair *tokenPair, unsigned idx, int freeTxtPtr);
+
+char **splitTextWithGPTRegex(unsigned *text);
+unsigned *splitTextIntoTokens(unsigned *text, VocabularyItem *vocabulary);
 
 unsigned getCharStringLength(unsigned *string);
 
@@ -34,69 +37,26 @@ int main()
 
   VocabularyItem *vocabulary = buildVocabulary(s);
 
-  printf("%s\n", decode(encode("Can I be sure that this actually works as intended?", vocabulary), vocabulary));
+  unsigned *ptr = encode("“हि”", vocabulary);
 
-  // regex_t regex;
-  // int status = regcomp(&regex, GPT_2_PATTERN_SPLITTER, REG_EXTENDED);
-  // if (status != 0)
+  while (*ptr != '\0')
+  {
+    printf("%d\n", *ptr);
+    ptr++;
+  }
+
+  // printf("%s\n", decode(encode("“हि”", vocabulary), vocabulary));
+
+  // unsigned *tokenizedText = splitTextIntoTokens(s, vocabulary);
+  // unsigned *tokenizedTextPtr = tokenizedText;
+
+  // while (*tokenizedTextPtr != '\0')
   // {
-  //   char error_message[100];
-  //   regerror(status, &regex, error_message, sizeof(error_message));
-  //   fprintf(stderr, "Regex compilation failed: %s\n", error_message);
-  //   exit(EXIT_FAILURE);
+  //   printf("%d ", *tokenizedTextPtr);
+  //   tokenizedTextPtr++;
   // }
 
-  // // Calculate the length of the unsigned array
-  // unsigned *sPtr = s;
-  // // Allocate memory for the character array
-  // char *charArray = malloc(MAX_LENGTH * sizeof(char));
-  // char *charPtr = charArray;
-  // // Copy unsigned integers to characters, discarding overflows
-  // while (*sPtr != '\0')
-  // {
-  //   // Check if the unsigned integer fits within the range of a char
-  //   if (*sPtr <= UCHAR_MAX)
-  //   {
-  //     *charPtr++ = (char)*sPtr;
-  //   }
-  //   else
-  //   {
-  //     // Handle overflow by setting to a default value
-  //     *charPtr++ = '?'; // For example, you can use '?' character
-  //   }
-
-  //   sPtr++;
-  // }
-
-  // charPtr = '\0';
-
-  // // Execute the regex split
-  // char *token;
-  // char *str = strdup(charArray); // Duplicate the string because regexec modifies it
-  // if (str == NULL)
-  // {
-  //   fprintf(stderr, "Memory allocation failed\n");
-  //   exit(EXIT_FAILURE);
-  // }
-
-  // while ((token = strsep(&str, " \t\n")) != NULL)
-  // {
-  //   regmatch_t pmatch;
-  //   if (regexec(&regex, token, 1, &pmatch, 0) == 0)
-  //   {
-  //     // If token matches the regex pattern, print it
-  //     printf("%.*s, ", (int)(pmatch.rm_eo - pmatch.rm_so), token + pmatch.rm_so);
-  //   }
-  //   else
-  //   {
-  //     // If token does not match the regex pattern, print it as is
-  //     // printf("%s\n", token);
-  //   }
-  // }
-
-  // // Free the memory and compiled regex
-  // free(str);
-  // regfree(&regex);
+  // printf("%s\n", decode(tokenizedText, vocabulary));
 }
 
 void printVocabulary(VocabularyItem *vocabulary)
@@ -277,6 +237,112 @@ VocabularyItem *buildVocabulary(unsigned *text)
   printf("compression ratio: %0.2fX\n", (float)originalLength / (float)compressedLength);
 
   return vocabulary;
+}
+
+char **splitTextWithGPTRegex(unsigned *text)
+{
+  regex_t regex;
+  int status = regcomp(&regex, GPT_2_PATTERN_SPLITTER, REG_EXTENDED);
+  if (status != 0)
+  {
+    char error_message[100];
+    regerror(status, &regex, error_message, sizeof(error_message));
+    fprintf(stderr, "Regex compilation failed: %s\n", error_message);
+    exit(EXIT_FAILURE);
+  }
+
+  // Calculate the length of the unsigned array
+  unsigned *sPtr = text;
+  // Allocate memory for the character array
+  char *charArray = malloc(MAX_LENGTH * sizeof(char));
+  char *charPtr = charArray;
+  // Copy unsigned integers to characters, discarding overflows
+  while (*sPtr != '\0')
+  {
+    // Check if the unsigned integer fits within the range of a char
+    if (*sPtr <= UCHAR_MAX && *sPtr >= 0)
+    {
+      *charPtr++ = (char)*sPtr;
+    }
+    else
+    {
+      // Handle overflow by setting to a default value
+      *charPtr++ = '?'; // For example, you can use '?' character
+    }
+
+    sPtr++;
+  }
+
+  charPtr = '\0';
+
+  // Execute the regex split
+  char *token;
+  char *str = strdup(charArray); // Duplicate the string because regexec modifies it
+  if (str == NULL)
+  {
+    fprintf(stderr, "Memory allocation failed\n");
+    exit(EXIT_FAILURE);
+  }
+
+  char **textGroupPointers = malloc(sizeof(char *) * MAX_LENGTH);
+  char **textGroupPointersPtr = textGroupPointers;
+
+  char *textGroups = malloc(sizeof(char) * MAX_LENGTH);
+  char *textGroupsPtr = textGroups;
+
+  while ((token = strsep(&str, " \t\n")) != NULL)
+  {
+    regmatch_t pmatch;
+    if (regexec(&regex, token, 1, &pmatch, 0) == 0)
+    {
+      *textGroupPointersPtr++ = textGroupsPtr;
+      strncpy(textGroupsPtr, token + pmatch.rm_so, pmatch.rm_eo - pmatch.rm_so);
+      printf("Match: %.*s|\n", pmatch.rm_eo - pmatch.rm_so, token + pmatch.rm_so);
+      textGroupsPtr += pmatch.rm_eo - pmatch.rm_so;
+      *textGroupsPtr++ = '\0';
+    }
+  }
+
+  *textGroupPointersPtr = NULL;
+
+  // Free the memory and compiled regex
+  free(str);
+  regfree(&regex);
+
+  return textGroupPointers;
+}
+
+unsigned *splitTextIntoTokens(unsigned *text, VocabularyItem *vocabulary)
+{
+  char **arr = splitTextWithGPTRegex(text);
+
+  char **arrPtr = arr;
+
+  unsigned *concatenatedTokens = malloc(sizeof(unsigned) * MAX_LENGTH);
+  unsigned *concatenatedTokensPtr = concatenatedTokens;
+
+  while (*arrPtr != NULL)
+  {
+    unsigned *encodedString = encode((char *)*arrPtr, vocabulary);
+    unsigned *encodedStringPtr = encodedString;
+
+    while (*encodedStringPtr != '\0')
+    {
+      *concatenatedTokensPtr = *encodedStringPtr;
+      concatenatedTokensPtr++;
+      encodedStringPtr++;
+    }
+
+    free(encodedString);
+    arrPtr++;
+  }
+
+  *concatenatedTokensPtr = '\0';
+
+  free(*arr);
+  free(arr);
+
+  return concatenatedTokens;
 }
 
 unsigned getCharStringLength(unsigned *string)
